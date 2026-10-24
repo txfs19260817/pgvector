@@ -20,6 +20,103 @@ SELECT COUNT(*) FROM (SELECT * FROM t ORDER BY val <~> (SELECT NULL::bit)) t2;
 (1 row)
 
 DROP TABLE t;
+-- asymmetric bit query
+CREATE TABLE t (id int, val vector(2));
+INSERT INTO t VALUES (1, '[1,-1]'), (2, '[-1,1]'), (3, '[1,1]');
+CREATE INDEX bit_idx ON t USING hnsw ((binary_quantize(val)::bit(2)) bit_vector_ip_ops);
+INSERT INTO t VALUES (4, '[-1,-1]');
+SELECT id FROM t ORDER BY binary_quantize(val)::bit(2) <#> '[2,3]'::vector;
+ id 
+----
+  3
+  2
+  1
+  4
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT id FROM t ORDER BY '[2,3]'::vector <#> binary_quantize(val)::bit(2) LIMIT 1;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using bit_idx on t
+         Order By: ((binary_quantize(val))::bit(2) <#> '[2,3]'::vector)
+(3 rows)
+
+SELECT id FROM t ORDER BY '[2,3]'::vector <#> binary_quantize(val)::bit(2);
+ id 
+----
+  3
+  2
+  1
+  4
+(4 rows)
+
+SELECT COUNT(*) FROM (SELECT * FROM t ORDER BY binary_quantize(val)::bit(2) <#> (SELECT NULL::vector)) t2;
+ count 
+-------
+     4
+(1 row)
+
+SELECT id FROM t ORDER BY binary_quantize(val)::bit(2) <#> '[1,2,3]'::vector LIMIT 1;
+ERROR:  different dimensions 2 and 3
+SELECT q, ARRAY(SELECT id FROM t ORDER BY binary_quantize(val)::bit(2) <#> q LIMIT 4)
+FROM (VALUES ('[2,3]'::vector), ('[-2,-3]'::vector)) v(q);
+    q    |   array   
+---------+-----------
+ [2,3]   | {3,2,1,4}
+ [-2,-3] | {4,1,2,3}
+(2 rows)
+
+DELETE FROM t WHERE id = 2;
+VACUUM t;
+SELECT id FROM t ORDER BY binary_quantize(val)::bit(2) <#> '[2,3]'::vector;
+ id 
+----
+  3
+  1
+  4
+(3 rows)
+
+DROP TABLE t;
+-- asymmetric bit query on halfvec storage
+CREATE TABLE t (id int, val halfvec(2));
+INSERT INTO t VALUES (1, '[1,-1]'), (2, '[-1,1]'), (3, '[1,1]'), (4, '[-1,-1]');
+CREATE INDEX bit_idx ON t USING hnsw ((binary_quantize(val)::bit(2)) bit_vector_ip_ops);
+EXPLAIN (COSTS OFF) SELECT id FROM t ORDER BY binary_quantize(val)::bit(2) <#> '[2,3]'::vector LIMIT 1;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Limit
+   ->  Index Scan using bit_idx on t
+         Order By: ((binary_quantize(val))::bit(2) <#> '[2,3]'::vector)
+(3 rows)
+
+SELECT id FROM t ORDER BY binary_quantize(val)::bit(2) <#> '[2,3]'::vector;
+ id 
+----
+  3
+  2
+  1
+  4
+(4 rows)
+
+DROP TABLE t;
+-- codes cannot have more dimensions than a vector query
+CREATE TABLE t (val bit(16001));
+CREATE INDEX ON t USING hnsw (val bit_vector_ip_ops);
+ERROR:  column cannot have more than 16000 dimensions for hnsw index
+DROP TABLE t;
+-- query type without a query distance function
+CREATE OPERATOR CLASS bit_vector_invalid_ops FOR TYPE bit USING hnsw AS
+	OPERATOR 1 <#> (bit, vector) FOR ORDER BY float_ops,
+	FUNCTION 1 hamming_distance(bit, bit);
+SELECT amvalidate(oid) FROM pg_opclass WHERE opcname = 'bit_vector_invalid_ops';
+INFO:  operator class "bit_vector_invalid_ops" of access method hnsw is missing support function 4
+ amvalidate 
+------------
+ f
+(1 row)
+
+DROP OPERATOR FAMILY bit_vector_invalid_ops USING hnsw;
 -- jaccard
 CREATE TABLE t (val bit(4));
 INSERT INTO t (val) VALUES (B'0000'), (B'1100'), (B'1111'), (NULL);

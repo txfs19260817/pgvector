@@ -39,8 +39,8 @@ GetScanItems(IndexScanDesc scan, Datum value)
 	/* Get m, dimensions, and entry point */
 	HnswGetMetaPageInfo(index, &m, &dimensions, &entryPoint);
 
-	/* Check dimensions match index */
-	if (DatumGetPointer(value) != NULL)
+	/* A query distance function takes another type and checks dimensions */
+	if (DatumGetPointer(value) != NULL && !so->queryDistance)
 		HnswCheckDim(dimensions, so->typeInfo, support->collation, value);
 
 	q->value = value;
@@ -137,6 +137,7 @@ hnswbeginscan(Relation index, int nkeys, int norderbys)
 {
 	IndexScanDesc scan;
 	HnswScanOpaque so;
+	FmgrInfo   *queryProc;
 	double		maxMemory;
 
 	scan = RelationGetIndexScan(index, nkeys, norderbys);
@@ -146,6 +147,12 @@ hnswbeginscan(Relation index, int nkeys, int norderbys)
 
 	/* Set support functions */
 	HnswInitSupport(&so->support, index);
+
+	/* Only scans use the query distance, not build, insert or vacuum */
+	queryProc = HnswOptionalProcInfo(index, HNSW_QUERY_DISTANCE_PROC);
+	so->queryDistance = queryProc != NULL;
+	if (so->queryDistance)
+		so->support.procinfo = queryProc;
 
 	HnswInitSearchState(&so->searchState, index, false);
 

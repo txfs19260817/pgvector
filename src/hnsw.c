@@ -289,6 +289,7 @@ hnswvalidate(Oid opclassoid)
 	HeapTuple	classtup;
 	Form_pg_opclass classform;
 	Oid			opcintype;
+	Oid			querytype;
 	char	   *opclassname;
 	Oid			opfamilyoid;
 #if PG_VERSION_NUM < 180000
@@ -326,6 +327,16 @@ hnswvalidate(Oid opclassoid)
 	oprlist = SearchSysCacheList1(AMOPSTRATEGY, ObjectIdGetDatum(opfamilyoid));
 	proclist = SearchSysCacheList1(AMPROCNUM, ObjectIdGetDatum(opfamilyoid));
 
+	/* The ordering operator can take a different query type */
+	querytype = opcintype;
+	for (int i = 0; i < oprlist->n_members; i++)
+	{
+		Form_pg_amop oprform = (Form_pg_amop) GETSTRUCT(&oprlist->members[i]->tuple);
+
+		if (oprform->amoplefttype == opcintype)
+			querytype = oprform->amoprighttype;
+	}
+
 	/* Check individual support functions */
 	for (int i = 0; i < proclist->n_members; i++)
 	{
@@ -358,6 +369,9 @@ hnswvalidate(Oid opclassoid)
 				break;
 			case HNSW_TYPE_INFO_PROC:
 				ok = check_amproc_signature(procform->amproc, INTERNALOID, true, 1, 1, INTERNALOID);
+				break;
+			case HNSW_QUERY_DISTANCE_PROC:
+				ok = check_amproc_signature(procform->amproc, FLOAT8OID, true, 2, 2, querytype, opcintype);
 				break;
 			default:
 				ereport(INFO,
@@ -412,7 +426,7 @@ hnswvalidate(Oid opclassoid)
 		}
 
 		/* Check operator signature */
-		if (!check_amop_signature(oprform->amopopr, FLOAT8OID, opcintype, opcintype))
+		if (!check_amop_signature(oprform->amopopr, FLOAT8OID, opcintype, querytype))
 		{
 			ereport(INFO,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
@@ -440,6 +454,8 @@ hnswvalidate(Oid opclassoid)
 		if (opclassgroup && (opclassgroup->functionset & (((int64) 1) << i)) != 0)
 			continue;
 		if (i == HNSW_NORM_PROC || i == HNSW_TYPE_INFO_PROC)
+			continue;
+		if (i == HNSW_QUERY_DISTANCE_PROC && querytype == opcintype)
 			continue;
 		ereport(INFO,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),

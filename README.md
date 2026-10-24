@@ -608,6 +608,24 @@ SELECT * FROM (
 ) ORDER BY embedding <=> '[1,-2,3]' LIMIT 5;
 ```
 
+With HNSW, you can also keep the query unquantized (asymmetric binary quantization)
+
+```sql
+CREATE INDEX ON items USING hnsw ((binary_quantize(embedding)::bit(3)) bit_vector_ip_ops);
+
+SELECT * FROM (
+    SELECT * FROM items ORDER BY binary_quantize(embedding)::bit(3) <#> '[1,-2,3]' LIMIT 20
+) ORDER BY embedding <=> '[1,-2,3]' LIMIT 5;
+```
+
+The graph is built with Hamming distance, and scans use the negative inner product of the query and the code as +1/-1 values. For `halfvec` columns, use the same index and scan with a `vector` query, then rerank with `halfvec` distance
+
+```sql
+SELECT * FROM (
+    SELECT * FROM items ORDER BY binary_quantize(embedding)::bit(3) <#> '[1,-2,3]'::vector LIMIT 20
+) ORDER BY embedding <=> '[1,-2,3]'::halfvec LIMIT 5;
+```
+
 ## Sparse Vectors
 
 Use the `sparsevec` type to store sparse vectors

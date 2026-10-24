@@ -11,6 +11,17 @@ SELECT hamming_distance('111', '00');
 SELECT hamming_distance('111', '000'::varbit(4));
 SELECT hamming_distance('111', '0000'::varbit(4));
 
+SELECT '10'::bit(2) <#> '[2,3]'::vector AS score;
+SELECT '[2,3]'::vector <#> '10'::bit(2) AS score;
+SELECT bit_vector_negative_inner_product('1011000000000001', '[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]');
+SELECT bit_vector_negative_inner_product('10110000000000011', '[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]');
+SELECT bit_vector_negative_inner_product(binary_quantize(array_agg(x)::vector), array_agg(x)::vector) = -sum(abs(x))
+FROM (SELECT ((i % 19) - 9)::real AS x FROM generate_series(1, 960) i) t;
+SELECT bit_vector_negative_inner_product('1111111111111111', array_fill(2e38::real, ARRAY[16])::vector);
+SELECT bit_vector_negative_inner_product('1111000011110000', array_fill(2e38::real, ARRAY[16])::vector);
+SELECT bit_vector_negative_inner_product('10', '[2]');
+SELECT bit_vector_negative_inner_product(NULL, '[2,3]');
+
 SELECT jaccard_distance('1111', '1111');
 SELECT jaccard_distance('1111', '1110');
 SELECT jaccard_distance('1111', '1100');

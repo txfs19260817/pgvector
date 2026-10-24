@@ -1686,6 +1686,22 @@ hnsw_bit_support(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(&typeInfo);
 }
 
+/* Queries are vectors, so codes cannot have more dimensions than a vector */
+FUNCTION_PREFIX PG_FUNCTION_INFO_V1(hnsw_bit_vector_support);
+Datum
+hnsw_bit_vector_support(PG_FUNCTION_ARGS)
+{
+	static const HnswTypeInfo typeInfo = {
+		.maxDimensions = VECTOR_MAX_DIM,
+		.dimensions = bitlength,
+		.normalize = NULL,
+		.checkValue = NULL,
+		.useFsm = false
+	};
+
+	PG_RETURN_POINTER(&typeInfo);
+}
+
 FUNCTION_PREFIX PG_FUNCTION_INFO_V1(hnsw_sparsevec_support);
 Datum
 hnsw_sparsevec_support(PG_FUNCTION_ARGS)

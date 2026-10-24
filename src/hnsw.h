@@ -47,7 +47,8 @@ typedef Pointer Item;
 #define HNSW_DISTANCE_PROC 1
 #define HNSW_NORM_PROC 2
 #define HNSW_TYPE_INFO_PROC 3
-#define HNSW_NPROCS 3
+#define HNSW_QUERY_DISTANCE_PROC 4
+#define HNSW_NPROCS 4
 
 #define HNSW_VERSION	1
 #define HNSW_MAGIC_NUMBER 0xA953A953
@@ -444,6 +445,7 @@ typedef struct HnswScanOpaqueData
 
 	/* Support functions */
 	HnswSupport support;
+	bool		queryDistance;
 }			HnswScanOpaqueData;
 
 typedef HnswScanOpaqueData * HnswScanOpaque;
