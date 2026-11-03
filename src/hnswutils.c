@@ -143,6 +143,41 @@ HnswGetEfConstruction(Relation index)
 }
 
 /*
+ * Get how indexed values are stored, for a build. A built index keeps this in
+ * its metapage, because the option can change after the build.
+ */
+int
+HnswGetQuantization(Relation index)
+{
+	HnswOptions *opts = (HnswOptions *) index->rd_options;
+
+	if (opts)
+		return opts->quantization;
+
+	return HNSW_QUANTIZATION_NONE;
+}
+
+PGDLLEXPORT Datum hamming_distance(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum binary_quantize(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum halfvec_binary_quantize(PG_FUNCTION_ARGS);
+
+/*
+ * Get function info for a C function of the extension, for direct calls
+ */
+FmgrInfo *
+HnswDirectProcInfo(PGFunction fn, short nargs)
+{
+	FmgrInfo   *finfo = palloc0(sizeof(FmgrInfo));
+
+	finfo->fn_addr = fn;
+	finfo->fn_oid = InvalidOid;
+	finfo->fn_nargs = nargs;
+	finfo->fn_strict = true;
+	finfo->fn_mcxt = CurrentMemoryContext;
+	return finfo;
+}
+
+/*
  * Get proc
  */
 FmgrInfo *
@@ -158,11 +193,26 @@ HnswOptionalProcInfo(Relation index, uint16 procnum)
  * Init support functions
  */
 void
-HnswInitSupport(HnswSupport * support, Relation index)
+HnswInitSupport(HnswSupport * support, Relation index, int quantization)
 {
 	support->procinfo = index_getprocinfo(index, 1, HNSW_DISTANCE_PROC);
 	support->collation = index->rd_indcollation[0];
 	support->normprocinfo = HnswOptionalProcInfo(index, HNSW_NORM_PROC);
+	support->quantized = false;
+	support->quantize = NULL;
+
+	if (quantization == HNSW_QUANTIZATION_BINARY)
+	{
+		support->quantize = HnswGetTypeInfo(index)->binaryQuantize;
+		if (support->quantize == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("type not supported for binary quantization")));
+
+		/* The graph is built on the sign bits with Hamming distance */
+		support->quantized = true;
+		support->procinfo = HnswDirectProcInfo(hamming_distance, 2);
+	}
 }
 
 /*
@@ -344,6 +394,28 @@ HnswGetMetaPageInfo(Relation index, int *m, int *dimensions, HnswElement * entry
 }
 
 /*
+ * Get the quantization of a built index. It changes only with a rebuild, which
+ * resets the relcache entry, so rd_amcache keeps it.
+ */
+int
+HnswGetMetaPageQuantization(Relation index)
+{
+	if (index->rd_amcache == NULL)
+	{
+		Buffer		buf;
+		int		   *quantization = MemoryContextAlloc(index->rd_indexcxt, sizeof(int));
+
+		buf = ReadBuffer(index, HNSW_METAPAGE_BLKNO);
+		LockBuffer(buf, BUFFER_LOCK_SHARE);
+		*quantization = HnswPageGetMeta(BufferGetPage(buf))->quantization;
+		UnlockReleaseBuffer(buf);
+		index->rd_amcache = quantization;
+	}
+
+	return *(int *) index->rd_amcache;
+}
+
+/*
  * Get the entry point
  */
 HnswElement
@@ -437,6 +509,10 @@ HnswFormIndexValue(Datum *out, Datum *values, bool *isnull, const HnswTypeInfo *
 
 		value = HnswNormValue(typeInfo, support->collation, value);
 	}
+
+	/* Store the sign bits */
+	if (support->quantized)
+		value = DirectFunctionCall1(support->quantize, value);
 
 	*out = value;
 
@@ -1647,7 +1723,8 @@ HnswGetTypeInfo(Relation index)
 			.dimensions = vector_dims,
 			.normalize = l2_normalize,
 			.checkValue = NULL,
-			.useFsm = false
+			.useFsm = false,
+			.binaryQuantize = binary_quantize
 		};
 
 		return (&typeInfo);
@@ -1665,7 +1742,8 @@ hnsw_halfvec_support(PG_FUNCTION_ARGS)
 		.dimensions = halfvec_vector_dims,
 		.normalize = halfvec_l2_normalize,
 		.checkValue = NULL,
-		.useFsm = false
+		.useFsm = false,
+		.binaryQuantize = halfvec_binary_quantize
 	};
 
 	PG_RETURN_POINTER(&typeInfo);

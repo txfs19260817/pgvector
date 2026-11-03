@@ -1,5 +1,7 @@
 #include "postgres.h"
 
+#include <math.h>
+
 #include "bitutils.h"
 #include "halfvec.h"			/* for USE_DISPATCH and USE_TARGET_CLONES */
 #include "port/pg_bitutils.h"
@@ -19,9 +21,16 @@
 
 #ifdef _MSC_VER
 #define TARGET_AVX512_POPCOUNT
+#define TARGET_AVX512F
 #else
+#define TARGET_AVX512F __attribute__((target("avx512f")))
 #define TARGET_AVX512_POPCOUNT __attribute__((target("avx512f,avx512vpopcntdq")))
 #endif
+#endif
+
+#if defined(__aarch64__) && defined(__ARM_NEON)
+#include <arm_neon.h>
+#define BIT_NEON
 #endif
 
 /* Disable for LLVM due to crash with bitcode generation */
@@ -159,6 +168,91 @@ BitJaccardDistanceAvx512Popcount(uint32 bytes, unsigned char *ax, unsigned char 
 }
 #endif
 
+/*
+ * Varbit stores the first dimension in the most significant bit of a byte.
+ * The sign table normalizes that order to increasing lanes.
+ */
+static uint32 BitVectorSignMask[256][BITS_PER_BYTE];
+
+static double
+BitVectorNegativeInnerProductDefault(const bits8 *bits, const float *values, int dimensions)
+{
+	double		distance = 0.0;
+
+	for (int i = 0; i < dimensions; i++)
+	{
+		union
+		{
+			float		f;
+			uint32		i;
+		}			swapfloat;
+
+		/* Flip the sign bit without a branch, since code bits are random */
+		swapfloat.f = values[i];
+		swapfloat.i ^= (uint32) ((bits[i / BITS_PER_BYTE] >> (BITS_PER_BYTE - 1 - (i % BITS_PER_BYTE))) & 1) << 31;
+		distance += swapfloat.f;
+	}
+
+	return distance;
+}
+
+#ifdef BIT_DISPATCH
+TARGET_AVX512F static double
+BitVectorNegativeInnerProductAvx512(const bits8 *bits, const float *values, int dimensions)
+{
+	__m512		sum = _mm512_setzero_ps();
+	int			i = 0;
+	double		result;
+
+	for (; i + 16 <= dimensions; i += 16)
+	{
+		__m512		current = _mm512_loadu_ps(values + i);
+		__m512i		signs = _mm512_inserti64x4(_mm512_castsi256_si512(_mm256_loadu_si256((const __m256i *) BitVectorSignMask[bits[i >> 3]])),
+											   _mm256_loadu_si256((const __m256i *) BitVectorSignMask[bits[(i >> 3) + 1]]), 1);
+
+		/* Flip the sign before adding, so the sum has one dependency */
+		sum = _mm512_add_ps(sum, _mm512_castsi512_ps(_mm512_xor_si512(_mm512_castps_si512(current), signs)));
+	}
+
+	result = (double) _mm512_reduce_add_ps(sum) +
+		BitVectorNegativeInnerProductDefault(bits + (i >> 3), values + i, dimensions - i);
+
+	/* Float lanes can overflow on huge values, so fall back to doubles */
+	return isfinite(result) ? result : BitVectorNegativeInnerProductDefault(bits, values, dimensions);
+}
+#endif
+
+#ifdef BIT_NEON
+static double
+BitVectorNegativeInnerProductNeon(const bits8 *bits, const float *values, int dimensions)
+{
+	float32x4_t low = vdupq_n_f32(0.0f);
+	float32x4_t high = vdupq_n_f32(0.0f);
+	int			i = 0;
+	double		result;
+
+	for (; i + BITS_PER_BYTE <= dimensions; i += BITS_PER_BYTE)
+	{
+		const uint32 *signs = BitVectorSignMask[bits[i >> 3]];
+		float32x4_t currentLow = vld1q_f32(values + i);
+		float32x4_t currentHigh = vld1q_f32(values + i + 4);
+		uint32x4_t	signLow = vld1q_u32(signs);
+		uint32x4_t	signHigh = vld1q_u32(signs + 4);
+
+		low = vaddq_f32(low, vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(currentLow), signLow)));
+		high = vaddq_f32(high, vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(currentHigh), signHigh)));
+	}
+
+	result = (double) vaddvq_f32(vaddq_f32(low, high)) +
+		BitVectorNegativeInnerProductDefault(bits + (i >> 3), values + i, dimensions - i);
+
+	/* Float lanes can overflow on huge values, so fall back to doubles */
+	return isfinite(result) ? result : BitVectorNegativeInnerProductDefault(bits, values, dimensions);
+}
+#endif
+
+double		(*BitVectorNegativeInnerProduct) (const bits8 *bits, const float *values, int dimensions);
+
 #ifdef BIT_DISPATCH
 #define CPU_FEATURE_OSXSAVE         (1 << 27)	/* F1 ECX */
 #define CPU_FEATURE_AVX512F         (1 << 16)	/* F7,0 EBX */
@@ -213,12 +307,22 @@ BitvecInit(void)
 	 */
 	BitHammingDistance = BitHammingDistanceDefault;
 	BitJaccardDistance = BitJaccardDistanceDefault;
+	BitVectorNegativeInnerProduct = BitVectorNegativeInnerProductDefault;
+
+	for (int byte = 0; byte < 256; byte++)
+		for (int bit = 0; bit < BITS_PER_BYTE; bit++)
+			BitVectorSignMask[byte][bit] = (byte & (1 << (BITS_PER_BYTE - 1 - bit))) ? 0x80000000U : 0;
 
 #ifdef BIT_DISPATCH
 	if (SupportsAvx512Popcount())
 	{
 		BitHammingDistance = BitHammingDistanceAvx512Popcount;
 		BitJaccardDistance = BitJaccardDistanceAvx512Popcount;
+		BitVectorNegativeInnerProduct = BitVectorNegativeInnerProductAvx512;
 	}
+#endif
+
+#ifdef BIT_NEON
+	BitVectorNegativeInnerProduct = BitVectorNegativeInnerProductNeon;
 #endif
 }

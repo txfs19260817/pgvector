@@ -11,6 +11,19 @@ SELECT hamming_distance('111', '00');
 SELECT hamming_distance('111', '000'::varbit(4));
 SELECT hamming_distance('111', '0000'::varbit(4));
 
+-- the scorer of quantized hnsw indexes, which the extension does not expose
+CREATE FUNCTION pg_temp.vector_bit_ip(vector, bit) RETURNS float8
+	AS '$libdir/vector', 'vector_bit_negative_inner_product' LANGUAGE C IMMUTABLE STRICT;
+SELECT pg_temp.vector_bit_ip('[2,3]', '10');
+SELECT pg_temp.vector_bit_ip('[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]', '1011000000000001');
+SELECT pg_temp.vector_bit_ip('[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]', '10110000000000011');
+SELECT pg_temp.vector_bit_ip(array_agg(x)::vector, binary_quantize(array_agg(x)::vector)) = -sum(abs(x))
+FROM (SELECT ((i % 19) - 9)::real AS x FROM generate_series(1, 960) i) t;
+SELECT pg_temp.vector_bit_ip(array_fill(2e38::real, ARRAY[16])::vector, '1111111111111111');
+SELECT pg_temp.vector_bit_ip(array_fill(2e38::real, ARRAY[16])::vector, '1111000011110000');
+SELECT pg_temp.vector_bit_ip('[2]', '10');
+SELECT pg_temp.vector_bit_ip('[2,3]', NULL);
+
 SELECT jaccard_distance('1111', '1111');
 SELECT jaccard_distance('1111', '1110');
 SELECT jaccard_distance('1111', '1100');

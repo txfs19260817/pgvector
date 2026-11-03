@@ -777,8 +777,9 @@ HnswInsertTupleOnDisk(Relation index, const HnswTypeInfo * typeInfo, HnswSupport
 	/* Get m, dimensions, and entry point */
 	HnswGetMetaPageInfo(index, &m, &dimensions, &entryPoint);
 
-	/* Check dimensions match index */
-	HnswCheckDim(dimensions, typeInfo, support->collation, value);
+	/* Check dimensions match index (the type enforces this if quantized) */
+	if (!support->quantized)
+		HnswCheckDim(dimensions, typeInfo, support->collation, value);
 
 	/* Create an element */
 	element = HnswInitElement(base, heaptid, m, HnswGetMl(m), HnswGetMaxLevel(m), NULL);
@@ -820,7 +821,7 @@ HnswInsertTuple(Relation index, Datum *values, bool *isnull, ItemPointer heaptid
 	const		HnswTypeInfo *typeInfo = HnswGetTypeInfo(index);
 	HnswSupport support;
 
-	HnswInitSupport(&support, index);
+	HnswInitSupport(&support, index, HnswGetMetaPageQuantization(index));
 
 	/* Form index value */
 	if (!HnswFormIndexValue(&value, values, isnull, typeInfo, &support))

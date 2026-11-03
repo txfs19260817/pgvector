@@ -102,6 +102,7 @@ CreateMetaPage(HnswBuildState * buildstate)
 	metap->entryOffno = InvalidOffsetNumber;
 	metap->entryLevel = -1;
 	metap->insertPage = InvalidBlockNumber;
+	metap->quantization = HnswGetQuantization(index);
 	((PageHeader) page)->pd_lower =
 		((char *) metap + sizeof(HnswMetaPageData)) - (char *) page;
 
@@ -493,8 +494,9 @@ InsertTuple(Relation index, Datum *values, bool *isnull, ItemPointer heaptid, Hn
 	if (!HnswFormIndexValue(&value, values, isnull, buildstate->typeInfo, support))
 		return false;
 
-	/* Check dimensions match index */
-	HnswCheckDim(buildstate->dimensions, buildstate->typeInfo, support->collation, value);
+	/* Check dimensions match index (the type enforces this if quantized) */
+	if (!support->quantized)
+		HnswCheckDim(buildstate->dimensions, buildstate->typeInfo, support->collation, value);
 
 	/* Get datum size */
 	valueSize = VARSIZE_ANY(DatumGetPointer(value));
@@ -701,7 +703,8 @@ InitBuildState(HnswBuildState * buildstate, Relation heap, Relation index, Index
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("column does not have dimensions")));
 
-	if (buildstate->dimensions > buildstate->typeInfo->maxDimensions)
+	/* Sign bits always fit, so quantized indexes have only the type's limit */
+	if (HnswGetQuantization(index) == HNSW_QUANTIZATION_NONE && buildstate->dimensions > buildstate->typeInfo->maxDimensions)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("column cannot have more than %d dimensions for hnsw index", buildstate->typeInfo->maxDimensions)));
@@ -715,7 +718,7 @@ InitBuildState(HnswBuildState * buildstate, Relation heap, Relation index, Index
 	buildstate->indtuples = 0;
 
 	/* Get support functions */
-	HnswInitSupport(&buildstate->support, index);
+	HnswInitSupport(&buildstate->support, index, HnswGetQuantization(index));
 
 	InitGraph(&buildstate->graphData, NULL, mul_size(maintenance_work_mem, 1024));
 	buildstate->graph = &buildstate->graphData;

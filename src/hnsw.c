@@ -48,6 +48,12 @@ double		hnsw_scan_mem_multiplier;
 int			hnsw_lock_tranche_id;
 static relopt_kind hnsw_relopt_kind;
 
+static relopt_enum_elt_def hnsw_quantization_options[] = {
+	{"none", HNSW_QUANTIZATION_NONE},
+	{"binary", HNSW_QUANTIZATION_BINARY},
+	{(const char *) NULL}
+};
+
 /*
  * Assign a tranche ID for our LWLocks. This only needs to be done by one
  * backend, as the tranche ID is remembered in shared memory.
@@ -98,6 +104,9 @@ HnswInit(void)
 					  HNSW_DEFAULT_M, HNSW_MIN_M, HNSW_MAX_M, AccessExclusiveLock);
 	add_int_reloption(hnsw_relopt_kind, "ef_construction", "Size of the dynamic candidate list for construction",
 					  HNSW_DEFAULT_EF_CONSTRUCTION, HNSW_MIN_EF_CONSTRUCTION, HNSW_MAX_EF_CONSTRUCTION, AccessExclusiveLock);
+	add_enum_reloption(hnsw_relopt_kind, "quantization", "Quantization of indexed values",
+					   hnsw_quantization_options, HNSW_QUANTIZATION_NONE,
+					   "Valid values are \"none\" and \"binary\".", AccessExclusiveLock);
 
 	DefineCustomIntVariable("hnsw.ef_search", "Sets the size of the dynamic candidate list for search",
 							"Valid range is 1..1000.", &hnsw_ef_search,
@@ -257,6 +266,7 @@ hnswoptions(Datum reloptions, bool validate)
 	static const relopt_parse_elt tab[] = {
 		{"m", RELOPT_TYPE_INT, offsetof(HnswOptions, m)},
 		{"ef_construction", RELOPT_TYPE_INT, offsetof(HnswOptions, efConstruction)},
+		{"quantization", RELOPT_TYPE_ENUM, offsetof(HnswOptions, quantization)},
 	};
 
 	return (bytea *) build_reloptions(reloptions, validate,

@@ -861,7 +861,7 @@ InitVacuumState(HnswVacuumState * vacuumstate, IndexVacuumInfo *info, IndexBulkD
 												"Hnsw vacuum temporary context",
 												ALLOCSET_DEFAULT_SIZES);
 
-	HnswInitSupport(&vacuumstate->support, index);
+	HnswInitSupport(&vacuumstate->support, index, HnswGetMetaPageQuantization(index));
 
 	/* Get m from metapage */
 	HnswGetMetaPageInfo(index, &vacuumstate->m, NULL, NULL);

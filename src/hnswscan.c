@@ -19,6 +19,10 @@
 #include "varatt.h"
 #endif
 
+PGDLLEXPORT Datum vector_bit_negative_inner_product(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum halfvec_to_vector(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum halfvec_binary_quantize(PG_FUNCTION_ARGS);
+
 /*
  * Algorithm 5 from paper
  */
@@ -41,7 +45,13 @@ GetScanItems(IndexScanDesc scan, Datum value)
 
 	/* Check dimensions match index */
 	if (DatumGetPointer(value) != NULL)
+	{
 		HnswCheckDim(dimensions, so->typeInfo, support->collation, value);
+
+		/* Sign bits are scored against a vector query */
+		if (support->quantize == halfvec_binary_quantize)
+			value = DirectFunctionCall3(halfvec_to_vector, value, Int32GetDatum(-1), BoolGetDatum(false));
+	}
 
 	q->value = value;
 	so->m = m;
@@ -145,7 +155,11 @@ hnswbeginscan(Relation index, int nkeys, int norderbys)
 	so->typeInfo = HnswGetTypeInfo(index);
 
 	/* Set support functions */
-	HnswInitSupport(&so->support, index);
+	HnswInitSupport(&so->support, index, HnswGetMetaPageQuantization(index));
+
+	/* Scans score the sign bits against the unquantized query */
+	if (so->support.quantized)
+		so->support.procinfo = HnswDirectProcInfo(vector_bit_negative_inner_product, 2);
 
 	HnswInitSearchState(&so->searchState, index, false);
 

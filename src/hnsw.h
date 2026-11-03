@@ -224,7 +224,14 @@ typedef struct HnswOptions
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int			m;				/* number of connections */
 	int			efConstruction; /* size of dynamic candidate list */
+	int			quantization;	/* how indexed values are stored */
 }			HnswOptions;
+
+typedef enum HnswQuantization
+{
+	HNSW_QUANTIZATION_NONE,
+	HNSW_QUANTIZATION_BINARY
+}			HnswQuantization;
 
 typedef struct HnswGraph
 {
@@ -292,6 +299,7 @@ typedef struct HnswTypeInfo
 	Datum		(*normalize) (PG_FUNCTION_ARGS);
 	void		(*checkValue) (Pointer v);
 	bool		useFsm;
+	Datum		(*binaryQuantize) (PG_FUNCTION_ARGS);
 }			HnswTypeInfo;
 
 typedef struct HnswSupport
@@ -299,6 +307,8 @@ typedef struct HnswSupport
 	FmgrInfo   *procinfo;
 	FmgrInfo   *normprocinfo;
 	Oid			collation;
+	bool		quantized;
+	PGFunction	quantize;
 }			HnswSupport;
 
 typedef struct HnswQuery
@@ -355,6 +365,7 @@ typedef struct HnswMetaPageData
 	OffsetNumber entryOffno;
 	int16		entryLevel;
 	BlockNumber insertPage;
+	uint16		quantization;
 }			HnswMetaPageData;
 
 typedef HnswMetaPageData * HnswMetaPage;
@@ -478,7 +489,8 @@ typedef struct HnswVacuumState
 int			HnswGetM(Relation index);
 int			HnswGetEfConstruction(Relation index);
 FmgrInfo   *HnswOptionalProcInfo(Relation index, uint16 procnum);
-void		HnswInitSupport(HnswSupport * support, Relation index);
+FmgrInfo   *HnswDirectProcInfo(PGFunction fn, short nargs);
+void		HnswInitSupport(HnswSupport * support, Relation index, int quantization);
 Datum		HnswNormValue(const HnswTypeInfo * typeInfo, Oid collation, Datum value);
 bool		HnswCheckNorm(HnswSupport * support, Datum value);
 Buffer		HnswNewBuffer(Relation index, ForkNumber forkNum);
@@ -510,6 +522,8 @@ bool		HnswLoadNeighborTids(HnswElement element, ItemPointerData *indextids, Rela
 void		HnswInitLockTranche(void);
 void		HnswRecordPageWithFreeSpace(Relation index, BlockNumber blkno, Page page);
 void		HnswCheckDim(int expected, const HnswTypeInfo * typeInfo, Oid collation, Datum value);
+int			HnswGetQuantization(Relation index);
+int			HnswGetMetaPageQuantization(Relation index);
 const		HnswTypeInfo *HnswGetTypeInfo(Relation index);
 PGDLLEXPORT void HnswParallelBuildMain(dsm_segment *seg, shm_toc *toc);
 

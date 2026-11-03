@@ -608,6 +608,22 @@ SELECT * FROM (
 ) ORDER BY embedding <=> '[1,-2,3]' LIMIT 5;
 ```
 
+With HNSW, you can also quantize in the index itself (experimental)
+
+```sql
+CREATE INDEX ON items USING hnsw (embedding vector_cosine_ops) WITH (quantization = 'binary');
+```
+
+The index stores the sign bits of each value and builds the graph with Hamming distance. Scans score the unquantized query against the bits, so rows come back in approximate distance order. Without the re-sort, `LIMIT k` returns the k rows with the best bit scores, which can miss closer rows. To get exact order, use a materialized CTE, as with relaxed ordering for iterative scans
+
+```sql
+WITH candidates AS MATERIALIZED (
+    SELECT id, embedding <=> '[1,-2,3]' AS distance FROM items ORDER BY distance LIMIT 100
+) SELECT * FROM candidates ORDER BY distance + 0 LIMIT 10;
+```
+
+Use `hnsw.ef_search` to set the number of candidates. This works with `vector` and `halfvec` columns and all of their operator classes, and allows up to 16,000 dimensions. Both iterative scan modes are supported and order rows by bit score. Changing `quantization` takes effect after `REINDEX`.
+
 ## Sparse Vectors
 
 Use the `sparsevec` type to store sparse vectors
