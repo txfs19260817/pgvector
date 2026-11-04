@@ -608,6 +608,38 @@ SELECT * FROM (
 ) ORDER BY embedding <=> '[1,-2,3]' LIMIT 5;
 ```
 
+## RaBitQ
+
+*Experimental*
+
+Use expression indexing with RaBitQ codes, which store 1, 2, 4, or 8 bits per dimension (4 by default) plus two correction factors
+
+```sql
+CREATE INDEX ON items USING hnsw ((rabitq_quantize(embedding, 4)::rabitq(3)) rabitq_l2_ops);
+```
+
+Get the nearest neighbors by estimated L2 distance and re-rank by the original vectors
+
+```sql
+SELECT * FROM (
+    SELECT * FROM items ORDER BY rabitq_quantize(embedding, 4)::rabitq(3) <-> '[1,-2,3]' LIMIT 100
+) ORDER BY embedding <-> '[1,-2,3]' LIMIT 10;
+```
+
+Scans rotate the query once and use the [extended RaBitQ](https://arxiv.org/abs/2409.09913) estimator. The graph is built with an estimate between codes. Supports up to 4,000 dimensions.
+
+The estimator is centered at the origin, so data with a large shared offset, like embeddings that all point roughly the same way, quantizes poorly. Subtract the same fixed center (for instance, the mean of a sample of rows) from the data and the query
+
+```sql
+CREATE INDEX ON items USING hnsw ((rabitq_quantize(embedding - '[1,1,1]', 4)::rabitq(3)) rabitq_l2_ops);
+
+SELECT * FROM (
+    SELECT * FROM items ORDER BY rabitq_quantize(embedding - '[1,1,1]', 4)::rabitq(3) <-> ('[1,-2,3]'::vector - '[1,1,1]') LIMIT 100
+) ORDER BY embedding <-> '[1,-2,3]' LIMIT 10;
+```
+
+L2 distances don't change under a shared shift, so reranking with the original vectors is unaffected.
+
 ## Sparse Vectors
 
 Use the `sparsevec` type to store sparse vectors

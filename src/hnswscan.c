@@ -39,8 +39,8 @@ GetScanItems(IndexScanDesc scan, Datum value)
 	/* Get m, dimensions, and entry point */
 	HnswGetMetaPageInfo(index, &m, &dimensions, &entryPoint);
 
-	/* Check dimensions match index */
-	if (DatumGetPointer(value) != NULL)
+	/* A query distance function takes another type and checks dimensions */
+	if (DatumGetPointer(value) != NULL && !so->queryDistance)
 		HnswCheckDim(dimensions, so->typeInfo, support->collation, value);
 
 	q->value = value;
@@ -110,8 +110,10 @@ GetScanValue(IndexScanDesc scan)
 		Assert(!VARATT_IS_COMPRESSED(DatumGetPointer(value)));
 		Assert(!VARATT_IS_EXTENDED(DatumGetPointer(value)));
 
-		/* Normalize if needed */
-		if (so->support.normprocinfo != NULL)
+		/* Prepare or normalize if needed */
+		if (so->prepareQuery != NULL)
+			value = FunctionCall2Coll(so->prepareQuery, so->support.collation, value, (Datum) 0);
+		else if (so->support.normprocinfo != NULL)
 			value = HnswNormValue(so->typeInfo, so->support.collation, value);
 	}
 
@@ -137,6 +139,7 @@ hnswbeginscan(Relation index, int nkeys, int norderbys)
 {
 	IndexScanDesc scan;
 	HnswScanOpaque so;
+	FmgrInfo   *queryProc;
 	double		maxMemory;
 
 	scan = RelationGetIndexScan(index, nkeys, norderbys);
@@ -146,6 +149,15 @@ hnswbeginscan(Relation index, int nkeys, int norderbys)
 
 	/* Set support functions */
 	HnswInitSupport(&so->support, index);
+
+	/* Only scans use the query distance; build, insert and vacuum do not */
+	queryProc = HnswOptionalProcInfo(index, HNSW_QUERY_DISTANCE_PROC);
+	so->queryDistance = queryProc != NULL;
+	if (so->queryDistance)
+		so->support.procinfo = queryProc;
+	so->prepareQuery = HnswOptionalProcInfo(index, HNSW_PREPARE_QUERY_PROC);
+	if (so->prepareQuery != NULL && !so->queryDistance)
+		elog(ERROR, "hnsw query preparation requires a query distance function");
 
 	HnswInitSearchState(&so->searchState, index, false);
 
