@@ -46,6 +46,7 @@ On x86, each dataset ran in one session on one instance. On ARM, the `WITH` rows
 
 ### Writes
 
+- Build, insert and vacuum of the asymmetric BQ index use Hamming distance, as the existing `bit_hamming_ops` index does. Only the scans differ. Thus, BQ + rerank should write the same way.
 - The writes use the same hosts and settings as the curves. Each option has its own `halfvec` table, with only that option's index. Autovacuum is off.
 - Steps:
   1. Load every row except the last 50,000. Build the index.
