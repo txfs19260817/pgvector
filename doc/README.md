@@ -6,7 +6,7 @@ Branches (https://github.com/txfs19260817/pgvector), each one commit on pgvector
 
 - [`asymmetric-bq`](https://github.com/txfs19260817/pgvector/tree/asymmetric-bq): asymmetric binary quantization (BQ) with the `bit_vector_ip_ops` operator class.
 - [`hnsw-quantization`](https://github.com/txfs19260817/pgvector/tree/hnsw-quantization): the prototype `WITH (quantization = 'binary')`. It uses the scorer from [`asymmetric-bq`](https://github.com/txfs19260817/pgvector/tree/asymmetric-bq), without the operator class. Scans return rows in approximate order. A materialized CTE re-sorts them.
-- [`rabitq-hnsw`](https://github.com/txfs19260817/pgvector/tree/rabitq-hnsw): the experimental RaBitQ for HNSW from my email, for comparison. It gives the RaBitQ rows.
+- [`rabitq-hnsw`](https://github.com/txfs19260817/pgvector/tree/rabitq-hnsw): an experimental RaBitQ for HNSW, for comparison. It gives the RaBitQ rows.
 
 ## Setup
 
@@ -73,8 +73,8 @@ On x86, each dataset ran in one session on one instance. On ARM, the `WITH` rows
 | BQ + rerank, halfvec | 261 | 345 | 7.6 / 9.0 | **3.5 GiB** | **59** / 65 min |
 | *Asymmetric BQ + rerank, vector* | 441 | 500 | 9.0 / 8.3 | **3.5 GiB** | 60 / 65 min |
 | *Asymmetric BQ + rerank, halfvec (`::vector` query)* | **625** | **693** | 8.9 / **11** | **3.5 GiB** | 60 / **64 min** |
-| *RaBitQ 1-bit (experimental patch)* | 303 | 252 | **9.4** / 8.1 | 3.6 GiB | 76 / 70 min |
-| *RaBitQ 4-bit (experimental patch)* | 310 | 396 | 6.8 / 6.7 | 6.8 GiB | 366 / 501 min |
+| *RaBitQ 1-bit (`rabitq-hnsw`)* | 303 | 252 | **9.4** / 8.1 | 3.6 GiB | 76 / 70 min |
+| *RaBitQ 4-bit (`rabitq-hnsw`)* | 310 | 396 | 6.8 / 6.7 | 6.8 GiB | 366 / 501 min |
 
 A later run measured the [`hnsw-quantization`](https://github.com/txfs19260817/pgvector/tree/hnsw-quantization) branch on the same instances, after a restart. It used one build per option:
 
