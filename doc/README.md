@@ -338,6 +338,70 @@ A later run measured the [`hnsw-quantization`](https://github.com/txfs19260817/p
 | *`WITH (quantization = 'binary')`, halfvec* | **583** (527-608) | 319 (299-320) | 105 (101-124) | 50 (50-56) | **0.992** | 3 | **656 MB** | 74 s |
 | *`WITH (quantization = 'binary')`, vector* | 492 (488-508) | 296 (263-305) | 106 (105-106) | 50 (45-51) | 0.991 | 3 | **656 MB** | 82 s |
 
+## Dimension sweep
+
+These runs use the dbpedia-openai3-3072-1000k-angular vectors, truncated to the first k dimensions, as the `dimensions` option of the OpenAI API does. Recall@10 is against the exact neighbors of the truncated vectors. The ÷ HNSW column divides QPS by HNSW on halfvec at the same k, in the same session. The 3,072 rows are the same runs as in the dbpedia-openai3-3072-1000k-angular section.
+
+![dimension sweep](charts/dim-sweep.png)
+
+### x86 (r7i.2xlarge)
+
+| Dimensions | Option | QPS 0.90 | QPS 0.95 | QPS 0.98 | ÷ HNSW at 0.90 / 0.95 / 0.98 | Best recall | Index MB | Builds |
+|---|---|---|---|---|---|---|---|---|
+| 256 | HNSW, halfvec | **1,074** | **606** | **284** | - | **0.994** | 786 | 1 |
+| 256 | BQ + rerank | 106 | 47 | not reached | 0.10 / 0.08 / - | 0.952 | **316** | 3 |
+| 256 | *Asymmetric BQ + rerank* | 294 | 160 | 73 | 0.27 / 0.26 / 0.26 | 0.984 | **316** | 3 |
+| 256 | *`WITH (quantization = 'binary')`* | 331 | 172 | 76 | **0.31** / **0.28** / **0.27** | 0.984 | **316** | 3 |
+| 384 | HNSW, halfvec | **1,018** | **577** | **235** | - | **0.993** | 1,105 | 1 |
+| 384 | BQ + rerank | 203 | 110 | 48 | 0.20 / 0.19 / 0.20 | 0.980 | **329** | 3 |
+| 384 | *Asymmetric BQ + rerank* | 597 | 294 | 98 | **0.59** / **0.51** / 0.42 | 0.989 | **329** | 3 |
+| 384 | *`WITH (quantization = 'binary')`* | 601 | 288 | 106 | **0.59** / 0.50 / **0.45** | 0.990 | **329** | 3 |
+| 512 | HNSW, halfvec | **916** | **536** | **209** | - | **0.992** | 1,289 | 1 |
+| 512 | BQ + rerank | 304 | 129 | 53 | 0.33 / 0.24 / 0.25 | 0.990 | **348** | 3 |
+| 512 | *Asymmetric BQ + rerank* | 544 | 314 | 143 | 0.59 / 0.59 / **0.69** | **0.992** | **348** | 3 |
+| 512 | *`WITH (quantization = 'binary')`* | 568 | 354 | 132 | **0.62** / **0.66** / 0.63 | **0.992** | **348** | 3 |
+| 1024 | HNSW, halfvec | **729** | 389 | 123 | - | 0.990 | 2,578 | 1 |
+| 1024 | BQ + rerank | 412 | 244 | 94 | 0.57 / 0.63 / 0.76 | 0.991 | **410** | 3 |
+| 1024 | *Asymmetric BQ + rerank* | 601 | 377 | 133 | **0.82** / 0.97 / 1.08 | 0.991 | **410** | 3 |
+| 1024 | *`WITH (quantization = 'binary')`* | 595 | **405** | **136** | **0.82** / **1.04** / **1.11** | **0.992** | **410** | 3 |
+| 1536 | HNSW, halfvec | 737 | 410 | 130 | - | 0.989 | 3,867 | 1 |
+| 1536 | BQ + rerank | 634 | 337 | 121 | 0.86 / 0.82 / 0.93 | 0.991 | **474** | 3 |
+| 1536 | *Asymmetric BQ + rerank* | 938 | **535** | 178 | 1.27 / **1.31** / 1.37 | **0.992** | **474** | 3 |
+| 1536 | *`WITH (quantization = 'binary')`* | **947** | 499 | **185** | **1.29** / 1.22 / **1.42** | **0.992** | **474** | 3 |
+| 3072 | HNSW, halfvec | 515 | 296 | 78 | - | 0.988 | 7,734 | 1 |
+| 3072 | BQ + rerank | 537 | 309 | 110 | 1.04 / 1.04 / 1.42 | **0.992** | **656** | 3 |
+| 3072 | *Asymmetric BQ + rerank* | 623 | 340 | 125 | 1.21 / 1.15 / 1.61 | **0.992** | **656** | 3 |
+| 3072 | *`WITH (quantization = 'binary')`* | **657** | **384** | **137** | **1.27** / **1.30** / **1.77** | **0.992** | **656** | 3 |
+
+### ARM (r7g.2xlarge)
+
+| Dimensions | Option | QPS 0.90 | QPS 0.95 | QPS 0.98 | ÷ HNSW at 0.90 / 0.95 / 0.98 | Best recall | Index MB | Builds |
+|---|---|---|---|---|---|---|---|---|
+| 256 | HNSW, halfvec | **854** | **496** | **215** | - | **0.994** | 786 | 1 |
+| 256 | BQ + rerank | 103 | 48 | not reached | 0.12 / 0.10 / - | 0.953 | **316** | 3 |
+| 256 | *Asymmetric BQ + rerank* | 237 | 126 | 56 | 0.28 / 0.25 / 0.26 | 0.982 | **316** | 3 |
+| 256 | *`WITH (quantization = 'binary')`* | 315 | 133 | 64 | **0.37** / **0.27** / **0.30** | 0.984 | **316** | 3 |
+| 384 | HNSW, halfvec | **746** | **429** | **172** | - | **0.993** | 1,105 | 1 |
+| 384 | BQ + rerank | 213 | 113 | 50 | 0.29 / 0.26 / 0.29 | 0.979 | **329** | 3 |
+| 384 | *Asymmetric BQ + rerank* | 495 | 237 | 88 | **0.66** / **0.55** / 0.52 | 0.990 | **329** | 3 |
+| 384 | *`WITH (quantization = 'binary')`* | 481 | 237 | 97 | 0.64 / **0.55** / **0.57** | 0.990 | **329** | 3 |
+| 512 | HNSW, halfvec | **815** | **471** | **179** | - | 0.992 | 1,289 | 1 |
+| 512 | BQ + rerank | 428 | 206 | 82 | 0.52 / 0.44 / 0.46 | 0.989 | **348** | 3 |
+| 512 | *Asymmetric BQ + rerank* | 610 | 391 | 156 | 0.75 / 0.83 / **0.87** | **0.993** | **348** | 3 |
+| 512 | *`WITH (quantization = 'binary')`* | 633 | 394 | 145 | **0.78** / **0.84** / 0.81 | **0.993** | **348** | 3 |
+| 1024 | HNSW, halfvec | 562 | 320 | 97 | - | 0.990 | 2,578 | 1 |
+| 1024 | BQ + rerank | 521 | 315 | 120 | 0.93 / 0.99 / 1.24 | 0.991 | **410** | 3 |
+| 1024 | *Asymmetric BQ + rerank* | **644** | 443 | 157 | **1.14** / 1.39 / 1.63 | **0.992** | **410** | 3 |
+| 1024 | *`WITH (quantization = 'binary')`* | 582 | **465** | **168** | 1.03 / **1.46** / **1.74** | **0.992** | **410** | 3 |
+| 1536 | HNSW, halfvec | 458 | 239 | 78 | - | 0.989 | 3,867 | 1 |
+| 1536 | BQ + rerank | 720 | 381 | 155 | 1.57 / 1.59 / 1.99 | 0.991 | **474** | 3 |
+| 1536 | *Asymmetric BQ + rerank* | 810 | 461 | 153 | 1.77 / 1.93 / 1.97 | **0.992** | **474** | 3 |
+| 1536 | *`WITH (quantization = 'binary')`* | **823** | **475** | **158** | **1.80** / **1.98** / **2.03** | **0.992** | **474** | 3 |
+| 3072 | HNSW, halfvec | 282 | 145 | 44 | - | 0.987 | 7,734 | 1 |
+| 3072 | BQ + rerank | 567 | **356** | **133** | 2.01 / **2.46** / **3.03** | **0.992** | **656** | 3 |
+| 3072 | *Asymmetric BQ + rerank* | 526 | 301 | 103 | 1.87 / 2.08 / 2.35 | **0.992** | **656** | 3 |
+| 3072 | *`WITH (quantization = 'binary')`* | **583** | 319 | 105 | **2.07** / 2.20 / 2.39 | **0.992** | **656** | 3 |
+
 ## The current `WITH (quantization = 'binary')` branch: same-session write check
 
 The write tables used an earlier build of the prototype, so they have no `WITH` column. These pairs ran asymmetric BQ and the current branch one after the other, in one session, 1-2 days later. Compare the two values in a cell only, not with the write tables. Each cell is asymmetric BQ / `WITH`, 1 run each (Cohere x86 `WITH`: the median of 3 runs).
