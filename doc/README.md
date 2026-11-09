@@ -1,6 +1,6 @@
 # pgvector HNSW binary quantization: benchmarks
 
-These are the full tables and charts for my comment in [pgvector#1003](https://github.com/pgvector/pgvector/issues/1003). In the tables, the options in italics are not in pgvector master. They are in the branches below.
+These are the full tables and charts for my comment in [pgvector#1003](https://github.com/pgvector/pgvector/issues/1003). In the tables, the options in italics are new, absent in pgvector master. They are in the branches below.
 
 Branches (https://github.com/txfs19260817/pgvector), each one commit on pgvector master b0665dc:
 
@@ -40,7 +40,7 @@ The vector-table options are the same, with `vector` in place of `halfvec`.
 
 ### Build-to-build variation
 
-Two builds of the same BQ index can differ by up to about 40% in QPS at high recall. Thus, I built each BQ index 3 times. Each table cell and each chart line is the median of the builds. The tables show the range in parentheses. Index size and build time are from the median build. "Not reached" means that no point of the sweep reached that recall.
+A "Build" means that index is built from scratch with `CREATE INDEX`. Two builds of the same BQ index can differ by up to about 40% in QPS at high recall. Thus, I built each BQ index 3 times. Each table cell and each chart line is the median of the builds. The tables show the range in parentheses. Index size and build time are from the median build. "Not reached" means that no point of the sweep reached that recall.
 
 On x86, each dataset ran in one session on one instance. On ARM, the `WITH` rows of DBpedia, Cohere and GloVe ran 2 days after the other rows, on the same instance.
 
@@ -401,14 +401,3 @@ These runs use the dbpedia-openai3-3072-1000k-angular vectors, truncated to the 
 | 3072 | BQ + rerank | 567 | **356** | **133** | 2.01 / **2.46** / **3.03** | **0.992** | **656** | 3 |
 | 3072 | *Asymmetric BQ + rerank* | 526 | 301 | 103 | 1.87 / 2.08 / 2.35 | **0.992** | **656** | 3 |
 | 3072 | *`WITH (quantization = 'binary')`* | **583** | 319 | 105 | **2.07** / 2.20 / 2.39 | **0.992** | **656** | 3 |
-
-## The current `WITH (quantization = 'binary')` branch: same-session write check
-
-The write tables used an earlier build of the prototype, so they have no `WITH` column. These pairs ran asymmetric BQ and the current branch one after the other, in one session, 1-2 days later. Compare the two values in a cell only, not with the write tables. Each cell is asymmetric BQ / `WITH`, 1 run each (Cohere x86 `WITH`: the median of 3 runs).
-
-| Pair | Inserts/s, 8 clients | Updates/s, 8 clients | WAL per inserted row | VACUUM after the delete | Recall@10 after the delete and VACUUM |
-|---|---|---|---|---|---|
-| x86, DBpedia | 2,623 / 2,547 | 2,411 / 2,422 | 16.3 / 16.3 KB | 836 / 856 s | 0.952 / 0.953 |
-| x86, Cohere | 2,786 / 2,739 | 2,562 / 2,589 | 12.5 / 12.5 KB | 816 / 808 s | 0.960 / 0.960 |
-| ARM, DBpedia | 2,640 / 2,564 | 2,434 / 2,266 | 16.3 / 16.3 KB | 1,125 / 1,081 s | 0.952 / 0.952 |
-| ARM, Cohere | 2,712 / 2,654 | 2,446 / 2,417 | 12.5 / 12.5 KB | 1,112 / 1,053 s | 0.960 / 0.960 |
